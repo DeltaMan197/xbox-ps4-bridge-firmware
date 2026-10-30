@@ -1,8 +1,12 @@
-# Pico-UF2 Build System - Fixed for arm-raspberry-pi-gcc
-# Generates .elf and .uf2 for Xbox-PS4 Bridge Firmware
+# Pico 2 ELF Build - Properly Configured for x86_64 Host
+# This Makefile is designed to cross-compile ARM firmware on x86_64 systems
 
-# Target: Raspberry Pi Pico 2 (RP2040) - Cortex-M0+
-# Compiler: arm-raspberry-pi-gcc (from Pico SDK)
+# Toolchain detection
+TOOLCHAIN := $(shell command -v arm-raspberry-pi-gcc 2>/dev/null || echo "arm-none-eabi-gcc")
+
+ifeq ($(TOOLCHAIN),)
+    $(error arm-raspberry-pi-gcc not found. Install with: sudo apt install arm-raspberry-pi-gcc)
+endif
 
 # Source files
 SRCS := src/main.c \
@@ -16,94 +20,69 @@ OBJS := $(SRCS:.c=.o)
 # Target ELF
 TARGET := xbox_ps4_bridge.elf
 
-# Compiler flags - FIXED for arm-raspberry-pi-gcc
-# -march=armv6-m is the correct architecture for Cortex-M0+ Pico 2
-# Removed -mthumb (not supported by this toolchain)
+# Compiler flags for ARM cross-compilation on x86_64 host
+# No -march or -mcpu needed - the cross-compiler handles this
 CFLAGS := -Wall -Wextra -std=c99 \
-          -march=armv6-m \
-          -mcpu=cortex-m0plus \
-          -DARDUINO_ARCH_SAM \
-          -Iinclude \
           -ffunction-sections \
           -fdata-sections \
-          -fno-common
+          -fno-common \
+          -DARDUINO_ARCH_SAM \
+          -Iinclude \
+          -Os \
+          -mfloat-abi=hard \
+          -mfpu=fpv4-sp-d16
 
-# LDFLAGS for proper ELF output
+# Linker flags for ARM ELF
 LDFLAGS := -lm \
+           -mthumb \
+           -Tarm-none-eabi-gcc.ld \
            -Wl,--gc-sections \
-           -Wl,-Map=$(TARGET).map \
-           -Wl,-Crelocatable
+           -Wl,-Map=$(TARGET).map
 
 # Default target
 all: $(TARGET)
 
-# Build ELF - FIXED with proper flags
+# Build ELF
 $(TARGET): $(OBJS)
 	@echo "Linking $(TARGET)..."
-	arm-raspberry-pi-gcc $(CFLAGS) -o $@ $^ $(LDFLAGS)
+	$(TOOLCHAIN) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 	@echo "✓ ELF created: $(TARGET)"
 	@ls -lh $(TARGET)
-	@file $(TARGET)
 
-# Compile object files - FIXED with correct include path
+# Compile object files
 $(SRCDIR)/%.o: $(SRCDIR)/%.c include/%.h
 	@echo "Compiling $<"
-	arm-raspberry-pi-gcc $(CFLAGS) -c -o $@ $<
+	$(TOOLCHAIN) $(CFLAGS) -c -o $@ $<
 
 # Create directories if missing
 $(SRCDIR):
-	@mkdir -p $(SRCDIR)
-	@echo "✓ Created $(SRCDIR)"
+	mkdir -p $(SRCDIR)
 
 $(INCDIR):
-	@mkdir -p $(INCDIR)
-	@echo "✓ Created $(INCDIR)"
+	mkdir -p $(INCDIR)
 
-# Clean build artifacts
+# Clean
 clean:
 	rm -f $(OBJS) $(TARGET) $(TARGET).map
 
-# Show build info
-info:
-	@echo "=== Build Configuration ==="
-	@echo "Target:    $(TARGET)"
-	@echo "Compiler:  arm-raspberry-pi-gcc"
-	@echo "CFLAGS:    $(CFLAGS)"
-	@echo "LDFLAGS:   $(LDFLAGS)"
-
 # Help
 help:
-	@echo "Xbox-PS4 Bridge Build System (Fixed)"
-	@echo "===================================="
-	@echo ""
-	@echo "Usage:"
-	@echo "  make          - Build ELF (default)"
-	@echo "  make clean    - Remove build artifacts"
-	@echo "  make info     - Show build configuration"
+	@echo "Xbox-PS4 Bridge ELF Build (x86_64 -> ARM)"
+	@echo "=========================================="
 	@echo ""
 	@echo "Prerequisites:"
 	@echo "  sudo apt install arm-raspberry-pi-gcc"
 	@echo "  sudo apt install xxd"
 	@echo ""
-	@echo "The fix addresses:"
-	@echo "  • -march=armv6-m (correct for Cortex-M0+)"
-	@echo "  • Removed -mthumb (unsupported)"
-	@echo "  • Fixed include paths for source files"
+	@echo "Commands:"
+	@echo "  make          - Build ELF (default)"
+	@echo "  make clean    - Remove build artifacts"
+	@echo "  make help     - Show this help"
 
-.PHONY: all clean info help
+.PHONY: all clean help
 
-# Verify ELF output
+# Verify build
 verify: $(TARGET)
-	@echo "Verifying $(TARGET)..."
-	@file $(TARGET)
+	@echo "=== ELF Verification ==="
+	@$(TOOLCHAIN) -dumpbin file $(TARGET)
 	@ls -lh $(TARGET)
-
-# Debug build
-debug: CFLAGS += -g -O0
-debug: $(TARGET)
-	@echo "Debug build complete: $(TARGET)"
-
-# Release build (optimized)
-release: CFLAGS += -O2
-release: $(TARGET)
-	@echo "Release build complete: $(TARGET)"
