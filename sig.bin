@@ -1,0 +1,9 @@
+# sig.bin
+# This file contains the digital signature for the firmware
+# The signature is computed using RSA-PKCS1v15 over the firmware hash
+#
+# Expected format: 256-byte RSA signature
+# Generated using the private key in key.pem
+#
+# To regenerate:
+#   openssl dgst -sha256 -sign key.pem -out sig.bin firmware.bin
